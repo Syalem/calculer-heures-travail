@@ -1,0 +1,138 @@
+
+<style>
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem 1.5rem; }
+  .label { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px; display: block; }
+  .field-group { margin-bottom: 1.25rem; }
+  input[type="time"], input[type="number"] { width: 100%; box-sizing: border-box; }
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 1.25rem; }
+  .metric { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 14px 16px; }
+  .metric-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 500; color: var(--color-text-primary); }
+  .metric-value.accent { color: #1D9E75; }
+  .divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 1.25rem 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .timeline { margin-top: 1.25rem; display: flex; align-items: center; gap: 0; }
+  .tl-seg { display: flex; flex-direction: column; align-items: center; }
+  .tl-bar { height: 8px; border-radius: 4px; }
+  .tl-time { font-size: 11px; color: var(--color-text-secondary); margin-top: 5px; white-space: nowrap; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-secondary); flex-shrink: 0; margin-top: 0; }
+  .tl-line { display: flex; flex: 1; flex-direction: column; }
+  .tl-connector { display: flex; align-items: center; gap: 0; width: 100%; }
+  .warning { font-size: 13px; color: #BA7517; background: #FAEEDA; border-radius: var(--border-radius-md); padding: 8px 12px; margin-top: 10px; }
+</style>
+
+<div style="padding: 1rem 0;">
+  <div class="card">
+    <p style="font-size: 15px; font-weight: 500; margin: 0 0 1.25rem; color: var(--color-text-primary);">Calculateur d'heures de travail</p>
+
+    <div class="field-group">
+      <label class="label" for="start">Heure de début</label>
+      <input type="time" id="start" value="08:00">
+    </div>
+
+    <div class="row">
+      <div class="field-group">
+        <label class="label" for="pause">Pause (minutes)</label>
+        <input type="number" id="pause" value="45" min="0" max="180" step="5">
+      </div>
+      <div class="field-group">
+        <label class="label" for="duration">Journée (heures)</label>
+        <input type="number" id="duration" value="7.6" min="1" max="12" step="0.1">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="result-grid">
+      <div class="metric">
+        <div class="metric-label">Heure de fin</div>
+        <div class="metric-value accent" id="end-time">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Durée totale</div>
+        <div class="metric-value" id="total-time">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Temps de travail</div>
+        <div class="metric-value" id="work-time">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Fin sans pause</div>
+        <div class="metric-value" id="end-no-pause">—</div>
+      </div>
+    </div>
+
+    <div id="timeline-wrap"></div>
+    <div id="warning-msg"></div>
+  </div>
+</div>
+
+<script>
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmt(totalMins) {
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return pad(h) + 'h' + pad(m);
+}
+function fmtTime(totalMins) {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
+  return pad(h) + ':' + pad(m);
+}
+
+function calc() {
+  const startVal = document.getElementById('start').value;
+  const pauseVal = parseFloat(document.getElementById('pause').value) || 0;
+  const durationVal = parseFloat(document.getElementById('duration').value) || 0;
+
+  if (!startVal || durationVal <= 0) return;
+
+  const [sh, sm] = startVal.split(':').map(Number);
+  const startMins = sh * 60 + sm;
+  const workMins = Math.round(durationVal * 60);
+  const totalMins = workMins + Math.round(pauseVal);
+  const endMins = startMins + totalMins;
+  const endNoPauseMins = startMins + workMins;
+
+  document.getElementById('end-time').textContent = fmtTime(endMins);
+  document.getElementById('total-time').textContent = fmt(totalMins);
+  document.getElementById('work-time').textContent = fmt(workMins);
+  document.getElementById('end-no-pause').textContent = fmtTime(endNoPauseMins);
+
+  const warn = document.getElementById('warning-msg');
+  if (endMins >= 24 * 60) {
+    warn.innerHTML = '<div class="warning">L\'heure de fin dépasse minuit.</div>';
+  } else {
+    warn.innerHTML = '';
+  }
+
+  const wrap = document.getElementById('timeline-wrap');
+  const totalW = totalMins;
+  const workPct = (workMins / totalW * 100).toFixed(1);
+  const pausePct = (Math.round(pauseVal) / totalW * 100).toFixed(1);
+
+  const pauseLabel = Math.round(pauseVal) > 0
+    ? `<div class="tl-bar" style="width:100%; background:#FAEEDA;"></div><div class="tl-time" style="color:#BA7517;">${Math.round(pauseVal)}min</div>`
+    : '';
+
+  wrap.innerHTML = `
+    <div style="margin-top:1.25rem;">
+      <div style="font-size:12px; color:var(--color-text-secondary); margin-bottom:6px;">Chronologie</div>
+      <div style="display:flex; align-items:stretch; height:28px; border-radius:var(--border-radius-md); overflow:hidden; border:0.5px solid var(--color-border-tertiary);">
+        <div style="width:${workPct}%; background:#9FE1CB;" title="Travail"></div>
+        ${Math.round(pauseVal) > 0 ? `<div style="width:${pausePct}%; background:#FAC775;" title="Pause"></div>` : ''}
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:5px;">
+        <span style="font-size:11px; color:var(--color-text-secondary);">${startVal}</span>
+        ${Math.round(pauseVal) > 0 ? `<span style="font-size:11px; color:#BA7517;">■ pause</span>` : ''}
+        <span style="font-size:11px; color:#0F6E56;">■ travail → ${fmtTime(endMins)}</span>
+      </div>
+    </div>`;
+}
+
+['start','pause','duration'].forEach(id => {
+  document.getElementById(id).addEventListener('input', calc);
+});
+
+calc();
+</script>
